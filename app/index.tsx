@@ -3,8 +3,8 @@ import { StyleSheet, Text, TouchableOpacity, View, Image, ScrollView } from 'rea
 import * as MediaLibrary from 'expo-media-library';
 import { useEffect, useState } from 'react';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import Slider from '@react-native-community/slider';
+import { MaterialIcons } from '@expo/vector-icons';
 
 interface MusicFile {
   id: string;
@@ -47,6 +47,12 @@ export default function Index() {
     }
   };
 
+  const resumeMusic = async () => {
+    if (sound) {
+      await sound.playAsync();
+    }
+  };
+
   const pauseMusic = async () => {
     if (sound) {
       await sound.pauseAsync();
@@ -61,7 +67,9 @@ export default function Index() {
 
   const playNext = async () => {
     let nextIndex = playing + 1;
-    if (nextIndex >= musicFiles.length) {
+    if (isShuffle) {
+      nextIndex = Math.floor(Math.random() * musicFiles.length);
+    } else if (nextIndex >= musicFiles.length) {
       nextIndex = 0;
     }
     await playMusic(musicFiles[nextIndex].uri);
@@ -70,7 +78,9 @@ export default function Index() {
 
   const playPrevious = async () => {
     let prevIndex = playing - 1;
-    if (prevIndex < 0) {
+    if (isShuffle) {
+      prevIndex = Math.floor(Math.random() * musicFiles.length);
+    } else if (prevIndex < 0) {
       prevIndex = musicFiles.length - 1;
     }
     await playMusic(musicFiles[prevIndex].uri);
@@ -117,18 +127,18 @@ export default function Index() {
         <Text style={styles.heading}>Adwa Muzunka</Text>
       </View>
       <ScrollView style={styles.list}>
-        {musicFiles.map((file) => (
+        {musicFiles.map((file, index) => (
           <TouchableOpacity
             key={file.id}
             onPress={
-              playing !== -1 && playing === musicFiles.indexOf(file)
+              playing === index
                 ? () => {
                     pauseMusic();
                     setPlaying(-1);
                   }
                 : () => {
                     playMusic(file.uri);
-                    setPlaying(musicFiles.indexOf(file));
+                    setPlaying(index);
                   }
             }
             style={styles.playButton}
@@ -139,8 +149,8 @@ export default function Index() {
                 style={styles.thumbnail}
               />
               <Text style={styles.fileName}>{file.filename}</Text>
-              <Ionicons
-                name={playing === musicFiles.indexOf(file) ? "pause" : "play"}
+              <MaterialIcons
+                name={playing === index ? "pause-circle" : "play-circle"}
                 size={40}
                 color="white"
               />
@@ -164,39 +174,41 @@ export default function Index() {
             maximumTrackTintColor="#888888"
           />
           <Text style={styles.progressText}>
-            {(progressDuration/10).toFixed(2)} / {(totalDuration / 100000).toFixed(2)}
+            {(progressDuration / 10).toFixed(2)} / {(totalDuration / 100000).toFixed(2)}
           </Text>
           <View style={styles.controls}>
-            <Ionicons
+            <MaterialIcons
               name="shuffle"
               size={30}
-              color={isShuffle ? "white" : "#888888"}
+              color="white"
+              style={{ opacity: isShuffle ? 1 : 0.5 }}
               onPress={handleShuffle}
             />
-            <Ionicons
-              name="play-skip-back"
+            <MaterialIcons
+              name="skip-previous"
               size={30}
               color="white"
               onPress={playPrevious}
             />
-            <Ionicons
-              name={playing !== -1 && sound && sound._loaded ? "pause" : "play"}
+            <MaterialIcons
+              name={playing !== -1 && sound && sound._loaded ? "pause-circle" : "play-circle"}
               size={50}
               color="white"
               onPress={
-                playing !== -1 && sound && sound._loaded ? pauseMusic : () => playMusic(musicFiles[playing].uri)
+                playing !== -1 && sound && sound._loaded ? pauseMusic : resumeMusic
               }
             />
-            <Ionicons
-              name="play-skip-forward"
+            <MaterialIcons
+              name="skip-next"
               size={30}
               color="white"
               onPress={playNext}
             />
-            <Ionicons
+            <MaterialIcons
               name="repeat"
               size={30}
-              color={isRepeat ? "white" : "#888888"}
+              color="white"
+              style={{ opacity: isRepeat ? 1 : 0.5 }}
               onPress={handleRepeat}
             />
           </View>
@@ -253,12 +265,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#1F1F1F",
     padding: 15,
     alignItems: "center",
-  },
-  footerThumbnail: {
-    width: 50,
-    height: 50,
-    borderRadius: 5,
-    marginBottom: 10,
   },
   currentTrack: {
     color: "#FFFFFF",
