@@ -13,17 +13,18 @@ interface MusicFile {
   duration: number;
 }
 
-// Import a default thumbnail image
 const defaultThumbnail = require('../assets/images/default-thumbnail.png'); // Update with your asset path
 
 export default function Index() {
   const [musicFiles, setMusicFiles] = useState<MusicFile[]>([]);
   const [playing, setPlaying] = useState<number>(-1);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [progressDuration, setProgressDuration] = useState<number>(0);
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
   const [isRepeat, setIsRepeat] = useState<boolean>(false);
+  const [isModalVisible, setIsModalVisible] = useState<boolean>(true); // State to manage modal visibility
 
   const fetchMusicFiles = async () => {
     const permission = await MediaLibrary.requestPermissionsAsync();
@@ -41,6 +42,7 @@ export default function Index() {
     }
     const { sound: newSound, status } = await Audio.Sound.createAsync({ uri: fileUri });
     setSound(newSound);
+    setIsPlaying(true);
     await newSound.playAsync();
     if (status.isLoaded) {
       setTotalDuration(status.durationMillis ?? 0);
@@ -49,19 +51,21 @@ export default function Index() {
 
   const resumeMusic = async () => {
     if (sound) {
+      setIsPlaying(true);
       await sound.playAsync();
     }
   };
 
   const pauseMusic = async () => {
     if (sound) {
+      setIsPlaying(false);
       await sound.pauseAsync();
     }
   };
 
   const handleSliderChange = async (value: number) => {
     if (sound) {
-      await sound.setPositionAsync(value * 10000);
+      await sound.setPositionAsync(value);
     }
   };
 
@@ -99,34 +103,62 @@ export default function Index() {
     if (!sound) {
       return;
     }
-    sound.setOnPlaybackStatusUpdate(
-      async (status: AVPlaybackStatus) => {
-        if (status.isLoaded) {
-          if (status.didJustFinish) {
-            if (isRepeat) {
-              await playMusic(musicFiles[playing].uri);
-            } else {
-              await playNext();
-            }
+
+    const updatePlaybackStatus = async (status: AVPlaybackStatus) => {
+      if (status.isLoaded) {
+        setProgressDuration(status.positionMillis ?? 0); // Update the slider with the current position
+        setTotalDuration(status.durationMillis ?? 0); // Set the total duration of the track
+
+        // Handle track finishing
+        if (status.didJustFinish) {
+          if (isRepeat) {
+            await sound.setPositionAsync(0); // Restart the current track from the beginning
+            await sound.playAsync(); // Replay the current track
           } else {
-            setProgressDuration(status.positionMillis / 10000);
+            await playNext(); // Play the next track
           }
         }
       }
-    );
-  }, [sound]);
+    };
+
+    // Set the playback status update function
+    sound.setOnPlaybackStatusUpdate(updatePlaybackStatus);
+
+    // Clean up the effect by removing the status update listener when the component unmounts
+    return () => {
+      sound.setOnPlaybackStatusUpdate(null);
+    };
+  }, [sound, playing, isRepeat]);
 
   useEffect(() => {
     fetchMusicFiles();
   }, []);
 
+  const playPressed = async () => {
+    if (isPlaying) {
+      await pauseMusic();
+    } else {
+      await resumeMusic();
+    }
+  };
+
+  const closeModal = () => {
+    setIsModalVisible(false);
+    pauseMusic();
+    setPlaying(-1);
+  };
+
+  const openModal = () => {
+    setIsModalVisible(true)
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
       <View style={styles.header}>
-        <Text style={styles.heading}>Adwa Muzunka</Text>
+        <Text style={styles.heading}>Uzum Player</Text>
       </View>
-      <ScrollView style={styles.list}>
+      <ScrollView contentContainerStyle={styles.list}>
         {musicFiles.map((file, index) => (
           <TouchableOpacity
             key={file.id}
@@ -137,78 +169,75 @@ export default function Index() {
                     setPlaying(-1);
                   }
                 : () => {
+                    openModal()
                     playMusic(file.uri);
                     setPlaying(index);
                   }
             }
-            style={styles.playButton}
+            style={[styles.playButton, playing === index && styles.playingButton]}
           >
-            <View style={styles.row}>
-              <Image
-                source={defaultThumbnail}
-                style={styles.thumbnail}
-              />
+            <Image source={defaultThumbnail} style={styles.thumbnail} />
+            <View style={styles.trackInfo}>
               <Text style={styles.fileName}>{file.filename}</Text>
-              <MaterialIcons
-                name={playing === index ? "pause-circle" : "play-circle"}
-                size={40}
-                color="white"
-              />
+              <Text style={styles.duration}>{(file.duration/100).toFixed(1)} Min</Text>
             </View>
+            <MaterialIcons
+              name={playing === index ? "pause-circle" : "play-circle"}
+              size={40}
+              color="#1976D2"
+            />
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {playing !== -1 && (
+      {isModalVisible && playing !== -1 && (
         <View style={styles.footer}>
-          <Text style={styles.currentTrack}>
-            {musicFiles[playing]?.filename}
-          </Text>
+          <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
+            <MaterialIcons name="close" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.currentTrack}>{musicFiles[playing]?.filename}</Text>
           <Slider
             style={styles.slider}
             minimumValue={0}
-            maximumValue={totalDuration / 10000}
+            maximumValue={totalDuration}
             value={progressDuration}
             onValueChange={handleSliderChange}
-            minimumTrackTintColor="#FFFFFF"
-            maximumTrackTintColor="#888888"
+            minimumTrackTintColor="#64B5F6"
+            maximumTrackTintColor="#BBDEFB"
+            thumbTintColor="#E3F2FD"
           />
           <Text style={styles.progressText}>
-            {(progressDuration / 10).toFixed(2)} / {(totalDuration / 100000).toFixed(2)}
+            {new Date(progressDuration).toISOString().substr(14, 5)} / {new Date(totalDuration).toISOString().substr(14, 5)}
           </Text>
           <View style={styles.controls}>
             <MaterialIcons
               name="shuffle"
               size={30}
-              color="white"
-              style={{ opacity: isShuffle ? 1 : 0.5 }}
+              color={isShuffle ? "#E3F2FD" : "#BBDEFB"}
               onPress={handleShuffle}
             />
             <MaterialIcons
               name="skip-previous"
               size={30}
-              color="white"
+              color="#E3F2FD"
               onPress={playPrevious}
             />
             <MaterialIcons
-              name={playing !== -1 && sound && sound._loaded ? "pause-circle" : "play-circle"}
+              name={isPlaying ? "pause-circle" : "play-circle"}
               size={50}
-              color="white"
-              onPress={
-                playing !== -1 && sound && sound._loaded ? pauseMusic : resumeMusic
-              }
+              color="#E3F2FD"
+              onPress={playPressed}
             />
             <MaterialIcons
               name="skip-next"
               size={30}
-              color="white"
+              color="#E3F2FD"
               onPress={playNext}
             />
             <MaterialIcons
               name="repeat"
               size={30}
-              color="white"
-              style={{ opacity: isRepeat ? 1 : 0.5 }}
+              color={isRepeat ? "#E3F2FD" : "#BBDEFB"}
               onPress={handleRepeat}
             />
           </View>
@@ -220,70 +249,100 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#121212",
     flex: 1,
-    paddingTop: 50,
+    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
   },
   header: {
-    backgroundColor: "#1F1F1F",
+    backgroundColor: "#003366",
     padding: 20,
     alignItems: "center",
+    position: "absolute",
+    top: 0,
+    width: "100%",
   },
   heading: {
-    color: "#FFFFFF",
-    fontSize: 24,
+    color: "#FFF",
+    fontSize: 28,
     fontWeight: "bold",
+    fontFamily: 'monospace',
   },
   list: {
-    flex: 1,
-    marginTop: 20,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 80, // Adjust to account for header height
   },
   playButton: {
-    backgroundColor: "#1F1F1F",
-    borderRadius: 10,
+    backgroundColor: "#E3F2FD",
+    borderRadius: 20,
     padding: 15,
-    marginVertical: 5,
-  },
-  row: {
+    marginVertical: 10,
+    width: "90%",
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    elevation: 2,
+  },
+  playingButton: {
+    backgroundColor: "#fff",
   },
   thumbnail: {
-    width: 50,
-    height: 50,
-    borderRadius: 5,
-    marginRight: 10,
+    width: 60,
+    height: 60,
+    marginRight: 20,
+    borderRadius: 30,
+  },
+  trackInfo: {
+    flex: 1,
+    flexDirection: "column",
+    justifyContent: "center",
   },
   fileName: {
-    fontSize: 18,
-    color: "#FFFFFF",
-    flex: 1,
+    color: "#003366",
+    fontSize: 16,
+    fontWeight: "bold",
+    fontFamily: 'monospace',
+  },
+  duration: {
+    color: "#64B5F6",
+    fontSize: 14,
+    marginTop: 5,
+    fontFamily: 'monospace',
   },
   footer: {
-    backgroundColor: "#1F1F1F",
+    backgroundColor: "#003366",
     padding: 15,
-    alignItems: "center",
+    borderRadius: 20,
+    margin: 10,
+    elevation: 5,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1,
   },
   currentTrack: {
-    color: "#FFFFFF",
+    color: "#FFF",
     fontSize: 18,
+    textAlign: "center",
     marginBottom: 10,
+    fontWeight: "bold",
+    fontFamily: 'monospace',
   },
   slider: {
     width: "100%",
     height: 40,
+    marginBottom: 10,
   },
   progressText: {
-    color: "#FFFFFF",
-    marginTop: 10,
+    color: "#E3F2FD",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 10,
   },
   controls: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
-    width: "80%",
   },
 });

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "AdwaMuzunka",
-    "slug": "AdwaMuzunka",
+    "name": "Free Tune",
+    "slug": "FreeTune",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/default-thumbnail.png",
@@ -38,8 +38,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "37205315-35fb-475b-b152-a4ed22d4f758"
+        "projectId": "509b4345-d323-4465-8124-a0c43a0efc8c"
       }
-    }
+    },
+    "owner": "milkeybear1416"
   }
 }
